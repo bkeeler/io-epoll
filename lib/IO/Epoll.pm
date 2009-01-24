@@ -182,7 +182,7 @@ sub poll
     my $msec = defined $timeout ? $timeout * 1000 : -1;
 
     my $ret = epoll_wait($self->[3], $maxevents, $msec);
-    return $ret if $ret < 0;
+    return -1 unless defined $ret;
 
     foreach my $event (@$ret) {
         $self->[1]{$event->[0]} = $event->[1];
