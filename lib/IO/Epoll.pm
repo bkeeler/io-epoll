@@ -179,7 +179,9 @@ sub poll
     my $maxevents = int ((values %{ $self->[0] }) / 2);
     $maxevents = 10 if $maxevents < 10;
 
-    my $ret = epoll_wait($self->[3], $maxevents, $timeout);
+    my $msec = defined $timeout ? $timeout * 1000 : -1;
+
+    my $ret = epoll_wait($self->[3], $maxevents, $msec);
     return $ret if $ret < 0;
 
     foreach my $event (@$ret) {
@@ -389,7 +391,7 @@ event mask value for IO.
 
 Call the system level poll routine. If TIMEOUT is not specified then the
 call will block. Returns the number of handles which had events
-happen, or -1 on error.
+happen, or -1 on error. TIMEOUT is in seconds and may be fractional.
 
 =item events ( IO )
 

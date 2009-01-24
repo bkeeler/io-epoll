@@ -17,10 +17,11 @@ if ($^O eq 'mpeix') {
 select(STDERR); $| = 1;
 select(STDOUT); $| = 1;
 
-print "1..10\n";
+print "1..11\n";
 
 use IO::Handle;
 use IO::Epoll qw(:compat);
+use Time::HiRes qw( time );
 
 my $poll = new IO::Epoll;
 
@@ -90,3 +91,17 @@ close STDIN;
 print "not "
     if $poll->poll(0.1);
 print "ok 10\n";
+
+my $starttime = time();
+
+$poll->poll( 1.000 );
+
+my $duration = time() - $starttime;
+if( $duration < 0.9 or $duration > 1.5 ) {
+   print "not ok 11 # poll(1.000) took ";
+   print "more than 1.5 seconds ($duration)\n" if $duration > 1.5;
+   print "less than 0.9 seconds ($duration)\n" if $duration < 0.9;
+}
+else {
+   print "ok 11\n";
+}
