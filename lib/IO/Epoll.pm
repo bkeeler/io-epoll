@@ -36,6 +36,7 @@ our %EXPORT_TAGS = ( 'default' => [ qw(
         epoll_create
         epoll_ctl
         epoll_wait
+        epoll_pwait
 ) ],
                      'compat' => [ qw(
         POLLIN
@@ -71,6 +72,7 @@ our @EXPORT = qw(
         epoll_create
         epoll_ctl
         epoll_wait
+        epoll_pwait
 );
 
 our $VERSION = '0.01';
@@ -109,11 +111,12 @@ XSLoader::load('IO::Epoll', $VERSION);
 # [1] maps fd's to returned  masks
 # [2] maps fd's to handles
 # [3] is the epoll fd
+# [4] is the signal mask, if used. If present will use epoll_pwait() instead of epoll_wait()
 
 sub new
 {
     my $package = shift;
-    my $self = bless [ {}, {}, {}, undef ] => $package;
+    my $self = bless [ {}, {}, {}, undef, undef ] => $package;
 
     $self->[3] = epoll_create(15);
     if ($self->[3] < 0) {
@@ -181,7 +184,7 @@ sub poll
 
     my $msec = defined $timeout ? $timeout * 1000 : -1;
 
-    my $ret = epoll_wait($self->[3], $maxevents, $msec);
+    my $ret = epoll_pwait($self->[3], $maxevents, $msec, $self->[4]);
     return -1 unless defined $ret;
 
     foreach my $event (@$ret) {
@@ -235,6 +238,47 @@ sub DESTROY
     my $self = shift;
 
     POSIX::close($self->[3]);
+}
+
+# IO::Ppoll API extension
+
+sub sigmask
+{
+    my $self = shift;
+
+    if( my ( $newmask ) = @_ ) {
+        $self->[4] = $newmask;
+    }
+    else {
+        $self->[4] ||= POSIX::SigSet->new();
+        return $self->[4];
+    }
+}
+
+sub sigmask_add
+{
+    my $self = shift;
+    my @signals = @_;
+
+    my $sigmask = $self->sigmask;
+    $sigmask->addset( $_ ) foreach @signals;
+}
+
+sub sigmask_del
+{
+    my $self = shift;
+    my @signals = @_;
+
+    my $sigmask = $self->sigmask;
+    $sigmask->delset( $_ ) foreach @signals;
+}
+
+sub sigmask_ismember
+{
+    my $self = shift;
+    my ( $signal ) = @_;
+
+    return $self->sigmask->ismember( $signal );
 }
 
 # IO::Poll compatibility constants
@@ -291,10 +335,11 @@ C<poll(2)>.  It is designed to offer O(1) scalability over large numbers of
 watched file descriptors.  You will need at least version 2.5.44 of Linux
 to use this module, and you might need to upgrade your C library.
 
-The C<epoll(2)> API comprises three system calls: C<epoll_create(2)>,
-C<epoll_ctl(2)> and C<epoll_wait(2)>.  C<IO::Epoll> provides a low-level
-API which closely matches the underlying system calls.  It also provides
-a higher-level layer designed to emulate the behavior of C<IO::Poll>.
+The C<epoll(2)> API comprises four system calls: C<epoll_create(2)>,
+C<epoll_ctl(2)>, C<epoll_wait(2)> and C<epoll_pwait(2)>.  C<IO::Epoll>
+provides a low-level API which closely matches the underlying system calls.
+It also provides a higher-level layer designed to emulate the behavior of
+C<IO::Poll> and C<IO::Ppoll>.
 
 =head1 LOW-LEVEL API
 
@@ -365,6 +410,17 @@ ready for both reading and writing.
 
 On error, C<epoll_wait> returns undef and sets C<errno> appropriately.
 
+=head2 epoll_pwait
+
+Wait for events on the C<epoll> file descriptor C<$epfd>.
+
+  $ret = epoll_pwait($epfd, $maxevents, $timeout, $sigmask)
+
+Identical to C<epoll_wait>, except that the kernel will atomically swap the
+current signal mask for the process to that supplied in C<$sigmask>, wait for
+events, then restore it to what it was originally. The C<$sigmask> parameter
+should be undef, or an instance of C<POSIX::SigSet>.
+
 =back
 
 =head1 HIGH LEVEL API
@@ -411,6 +467,39 @@ EVENT_MASK happen during the last call ti C<poll>
 
 =back
 
+=head1 IO::Ppoll METHODS
+
+IO::Epoll also provides methods compatible with IO::Ppoll. When any of these
+methods are called, the IO::Epoll object switches up to IO::Ppoll-compatible
+mode, and will use the C<epoll_pwait(2)> system call when the C<poll> method
+is invoked.
+
+=over 4
+
+=item sigmask
+
+Returns the C<POSIX::SigSet> object in which the signal mask is stored. Since
+this is a reference to the object used in the call to C<epoll_pwait(2)>, any
+modifications made to it will be reflected in the signal mask given to the
+system call.
+
+=item sigmask_add ( SIGNALS )
+
+Adds the given signals to the signal mask. These signals will be blocked
+during the C<poll> call.
+
+=item sigmask_del ( SIGNALS )
+
+Removes the given signals from the signal mask. These signals will not be
+blocked during the C<poll> call, and may be delivered while C<poll> is
+waiting.
+
+=item sigmask_ismember ( SIGNAL )
+
+Tests if the given signal is present in the signal mask.
+
+=back
+
 
 =head1 Exportable constants
 
@@ -446,8 +535,8 @@ Exported by the :compat tag:
 
 =head1 SEE ALSO
 
-C<IO::Poll> C<IO::Select> C<epoll(4)> C<epoll_create(2)> C<epoll_ctl(2)>
-C<epoll_wait(2)>
+C<IO::Poll> C<IO::Select> C<IO::Ppoll> C<epoll(4)> C<epoll_create(2)>
+C<epoll_ctl(2)> C<epoll_wait(2)> C<epoll_pwait(2)>
 
 =head1 AUTHOR
 
