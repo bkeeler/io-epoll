@@ -9,3 +9,6 @@ Revision history for Perl extension IO::Epoll.
 		* Ensure ->poll returns correct value on error;
 		* Ensure that ->poll interprets timeout correctly
 		* Add support for epoll_pwait, and IO::Ppoll compatibility
+
+0.03   Wed Jan  4 15:34:40 EST 2012
+    - Applied patch from RT for latest bleadperl
