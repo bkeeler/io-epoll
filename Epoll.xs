@@ -78,10 +78,13 @@ CODE:
 	if(SvOK(sigmask)) {
 		if(!sv_derived_from(sigmask, "POSIX::SigSet"))
 			Perl_croak(aTHX_ "epoll_pwait: sigmask is not of type POSIX::SigSet");
-
+#if PERL_VERSION > 15 || PERL_VERSION == 15 && PERL_SUBVERSION > 2
+        sigmask_real = (sigset_t *) SvPV_nolen(SvRV(sigmask));
+#else
 		/* This code borrowed from POSIX.xs */
 		IV tmp = SvIV((SV*)SvRV(sigmask));
 		sigmask_real = INT2PTR(sigset_t*, tmp);
+#endif
 	}
 	else {
 		sigmask_real = NULL;
